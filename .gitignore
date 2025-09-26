@@ -1,0 +1,49 @@
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pkl
+*.pdb
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.*
+
+# Logs
+*.log
+*.out
+*.err
+
+# Jupyter notebooks checkpoints (if you use them)
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
+.idea/
+
+# Coverage / test reports
+htmlcov/
+.tox/
+.coverage
+*.cover
+*.py,cover
+*.pyc
+*.pyo
+.cache/
+pytest_cache/
+
+# Build / distribution artifacts
+build/
+dist/
+*.egg-info/
