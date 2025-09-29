@@ -1,0 +1,27 @@
+services:
+  learning-coach:
+    build: .
+    container_name: learning-coach
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./markdown_files:/app/markdown_files
+    ports:
+      - "8000:8000"
+    command: ["adk", "web"]
+
+  markdownify:
+    build:
+      context: ../../markdownify/markdownify-mcp
+      dockerfile: Dockerfile
+    container_name: markdownify
+    volumes:
+      - ../../markdownify/markdownify-mcp:/app
+      - markdownify_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+
+volumes:
+  markdownify_node_modules:
+

@@ -1,17 +1,17 @@
+import json
 import os
+from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.tools import google_search
 from google.adk.tools.agent_tool import AgentTool
 from google.adk.tools.mcp_tool.mcp_toolset import MCPToolset
-from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
+
+load_dotenv()
 
 # --- Constants ---
 GEMINI_MODEL = "gemini-2.0-flash"
-MARKDOWNIFY_PATH = os.getenv("MARKDOWNIFY_PATH") or os.path.join(
-    os.path.dirname(__file__),
-    "../../markdownify/markdownify-mcp/dist/index.js"
-)
+PDF_READER_PATH = os.getenv("PDF_READER_PATH", "")
 
 
 #----------------------------Search Tool--------------------------------
@@ -21,7 +21,7 @@ SearchAgent = Agent(
     name="SearchAgent",
     model=GEMINI_MODEL,
     description="Finds and retrieves relevant, up-to-date information from the web when given a query.",
-    instructions="""
+    instruction="""
 You are a powerful search assistant. Your job is to transform user queries into
 effective Google searches and return the most useful, relevant, and reliable
 information available on the web.
@@ -44,83 +44,87 @@ Do not fabricate information. Only return what the Google Search tool provides.
 If no good results are found, state that explicitly.
 """,
     tools=[google_search],
-    output_schema={
-    "type": "object",
-    "properties": {
-        "results": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "url": {"type": "string"},
-                    "snippet": {"type": "string"}
-                },
-                "required": ["title", "url"]
-            }
-        }
-    },
-    "required": ["results"]
-},
-    output_key=["results"]
 )
 
-SearchTool = AgentTool(agent=SearchAgent)
+
+class SearchAgentTool(AgentTool):
+    async def run_async(self, *, args, tool_context):
+        result = await super().run_async(args=args, tool_context=tool_context)
+        parsed = None
+        if isinstance(result, str):
+            try:
+                parsed = json.loads(result)
+            except json.JSONDecodeError:
+                parsed = None
+        elif isinstance(result, dict):
+            parsed = result
+        if isinstance(parsed, dict) and "results" in parsed:
+            tool_context.state["results"] = parsed["results"]
+        return result
+
+
+SearchTool = SearchAgentTool(agent=SearchAgent)
 
 
 #----------------------------Markdownify Tool--------------------------------
 
 
-# 1. Define the Markdownify MCP connection
-markdownify_connection = StdioConnectionParams(
-    server_params=StdioServerParameters(
-        command="node",
-        args=[MARKDOWNIFY_PATH],
-        env={
-            "MD_SHARE_DIR": os.getenv("MARKDOWNIFY_SHARE_DIR", "")
-        }
-    )
+# --- PDF Reader MCP Tool ---
+pdf_reader_connection = StdioServerParameters(
+    command="node",
+    args=[os.getenv("PDF_READER_PATH")],
+    env={
+        "PDF_SHARE_DIR": os.getenv("PDF_SHARE_DIR", "")
+    }
 )
 
-# 2. Wrap as a toolset 
-MarkdownifyToolset = MCPToolset(
-    connection_params=markdownify_connection,
-    # tool_filter=None,
-)
 
-# 3. Define the agent that uses the toolset
-MarkdownifyAgent = Agent(
-    name="MarkdownifyAgent",
-    model=GEMINI_MODEL,
-    description=(
-        "Converts files (PDF, DOCX, PPTX, XLSX, images, audio) and web content into Markdown."
-    ),
-    instructions="""
-You are the Markdownify Agent. You connect to an MCP server that provides many tools
-for converting external content into Markdown.
+PDFReaderToolset = MCPToolset(connection_params=pdf_reader_connection)
 
-You should:
-1. First call `list_tools` to see what tools are available in the current session.
-2. Based on the learner input:
-   - Use `webpage-to-markdown` for URLs.
-   - Use `pdf-to-markdown`, `docx-to-markdown`, `pptx-to-markdown`, or `xlsx-to-markdown` for documents.
-   - Use `image-to-markdown` for images.
-   - Use `audio-to-markdown` for audio recordings.
-3. Return clean, concise Markdown text for downstream summarization.
+PDFReaderAgent = Agent(
+    name="PDFReaderAgent",
+    model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+    description="Extracts text, searches content, or retrieves metadata from PDF files.",
+    instruction="""
+You are the PDF Reader Agent.
 
-Never return raw binary data. Always convert it to Markdown before passing it along.
+Available tools:
+- `read-pdf` → Extract text (optionally with metadata or cleaning).
+- `search-pdf` → Search inside a PDF (supports regex, case, whole word).
+- `pdf-metadata` → Get metadata only.
+
+Always:
+1. Call `list_tools` to confirm what’s available.
+2. Use the right tool depending on the user request.
+3. Save extracted text into `content_markdown` in tool_context for summarization.
 """,
-    tools=[MarkdownifyToolset],
-    output_schema={
-    "type": "object",
-    "properties": {
-        "source": {"type": "string"},
-        "content_markdown": {"type": "string"},
-        "metadata": {"type": "object"}
-    },
-    "required": ["content_markdown"]
-},
-    output_key=["content_markdown", "metadata"]    
+    tools=[PDFReaderToolset],
 )
-# 4. Expose as an AgentTool so other agents can call it
-MarkdownifyTool = AgentTool(agent=MarkdownifyAgent)
+
+
+class PDFReaderAgentTool(AgentTool):
+    async def run_async(self, *, args, tool_context):
+        result = await super().run_async(args=args, tool_context=tool_context)
+        parsed = None
+        if isinstance(result, str):
+            try:
+                parsed = json.loads(result)
+            except json.JSONDecodeError:
+                parsed = None
+        elif isinstance(result, dict):
+            parsed = result
+
+        content = None
+        if isinstance(parsed, dict):
+            # This MCP uses "content" for text and "metadata" separately
+            content = parsed.get("content") or parsed.get("content_markdown")
+            metadata = parsed.get("metadata")
+            if content:
+                tool_context.state["content_markdown"] = content
+            if metadata:
+                tool_context.state["metadata"] = metadata
+
+        return result
+
+
+PDFReaderTool = PDFReaderAgentTool(agent=PDFReaderAgent)

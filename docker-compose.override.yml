@@ -1,0 +1,33 @@
+services:
+  learning-coach:
+    restart: unless-stopped
+    command:
+      - adk
+      - web
+      - --host
+      - 0.0.0.0
+      - --log_level
+      - debug
+    environment:
+      MARKDOWNIFY_PATH: /app/markdownify-mcp/dist/index.js
+    volumes:
+      # Mount markdown outputs
+      - ./markdown_files:/app/markdown_files
+      # Mount .env so edits apply immediately
+      - ./.env:/app/.env
+      # Mount local markdownify MCP build for subprocess usage
+      - ../../markdownify/markdownify-mcp:/app/markdownify-mcp
+
+  markdownify:
+    profiles:
+      - manual
+    restart: unless-stopped
+    volumes:
+      # Mount local markdownify source (so you can dev/test without rebuild)
+      - ../../markdownify/markdownify-mcp:/app
+
+
+
+
+
+

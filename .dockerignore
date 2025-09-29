@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.egg-info
+*.log
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+env/
+
+# Node
+node_modules/
+npm-debug.log
+yarn.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+build/
+dist/
+*.egg
